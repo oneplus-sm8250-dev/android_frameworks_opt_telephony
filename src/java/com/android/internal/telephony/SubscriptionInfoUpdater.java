@@ -109,7 +109,7 @@ public class SubscriptionInfoUpdater extends Handler {
     private static String[] sInactiveIccIds = new String[SUPPORTED_MODEM_COUNT];
     private static int[] sSimCardState = new int[SUPPORTED_MODEM_COUNT];
     private static int[] sSimApplicationState = new int[SUPPORTED_MODEM_COUNT];
-    private static boolean sIsSubInfoInitialized = false;
+    private static volatile boolean sIsSubInfoInitialized = false;
     private SubscriptionManager mSubscriptionManager = null;
     private EuiccManager mEuiccManager;
     private Handler mBackgroundHandler;
@@ -333,7 +333,7 @@ public class SubscriptionInfoUpdater extends Handler {
         }
     }
 
-    private void onMultiSimConfigChanged() {
+    protected void onMultiSimConfigChanged() {
         int activeModemCount = ((TelephonyManager) sContext.getSystemService(
                 Context.TELEPHONY_SERVICE)).getActiveModemCount();
         // For inactive modems, reset its states.
@@ -517,7 +517,7 @@ public class SubscriptionInfoUpdater extends Handler {
                         sContext.getSystemService(Context.TELEPHONY_SERVICE);
                 String operator = tm.getSimOperatorNumeric(subId);
 
-                if (!TextUtils.isEmpty(operator)) {
+                if (operator != null && !TextUtils.isEmpty(operator)) {
                     if (subId == mSubscriptionController.getDefaultSubId()) {
                         MccTable.updateMccMncConfiguration(sContext, operator);
                     }
@@ -641,7 +641,7 @@ public class SubscriptionInfoUpdater extends Handler {
      * @param phoneId phoneId for which the cleanup needs to be done
      * @param isSimAbsent boolean to indicate if the SIM is actually ABSENT (case 1 above)
      */
-    private void cleanSubscriptionInPhone(int phoneId, boolean isSimAbsent) {
+    protected void cleanSubscriptionInPhone(int phoneId, boolean isSimAbsent) {
         if (sInactiveIccIds[phoneId] != null || (isSimAbsent && sIccId[phoneId] != null
                 && !sIccId[phoneId].equals(ICCID_STRING_FOR_NO_SIM))) {
             // When a SIM is unplugged, mark uicc applications enabled. This is to make sure when

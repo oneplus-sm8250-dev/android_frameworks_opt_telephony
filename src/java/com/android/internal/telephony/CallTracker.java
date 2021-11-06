@@ -24,6 +24,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.PersistableBundle;
 import android.telephony.CarrierConfigManager;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
 import java.io.FileDescriptor;
@@ -231,6 +232,23 @@ public abstract class CallTracker extends Handler {
 
         return dialNumber;
 
+    }
+
+    /**
+     * Determines if an incoming call has ACTIVE (or HELD) call on the other SUB.
+     */
+    protected boolean isPseudoDsdaCall() {
+        TelephonyManager telephony = TelephonyManager.from(getPhone().getContext());
+        if (telephony.isConcurrentCallsPossible() ||
+            telephony.getActiveModemCount() <= PhoneConstants.MAX_PHONE_COUNT_SINGLE_SIM) {
+            return false;
+        }
+        for (Phone phone: PhoneFactory.getPhones()) {
+            if (phone.getSubId() != getPhone().getSubId()) {
+                return phone.getState() == PhoneConstants.State.OFFHOOK;
+            }
+        }
+        return false;
     }
 
     private boolean compareGid1(Phone phone, String serviceGid1) {

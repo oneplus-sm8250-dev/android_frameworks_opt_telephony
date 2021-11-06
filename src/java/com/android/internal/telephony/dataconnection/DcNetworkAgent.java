@@ -28,7 +28,10 @@ import android.net.NetworkProvider;
 import android.net.QosFilter;
 import android.net.QosSessionAttributes;
 import android.net.SocketKeepalive;
+import android.net.NetworkScore;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.telephony.AccessNetworkConstants;
 import android.telephony.AccessNetworkConstants.TransportType;
@@ -39,14 +42,15 @@ import android.telephony.ServiceState;
 import android.telephony.TelephonyManager;
 import android.telephony.data.NrQosSessionAttributes;
 import android.telephony.data.QosBearerSession;
-import android.util.ArrayMap;
 import android.util.LocalLog;
 import android.util.SparseArray;
 
 import com.android.internal.telephony.DctConstants;
 import com.android.internal.telephony.Phone;
+import com.android.internal.telephony.PhoneSwitcher;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.SlidingWindowEventCounter;
+import com.android.internal.telephony.SubscriptionController;
 import com.android.internal.telephony.metrics.TelephonyMetrics;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.telephony.Rlog;
@@ -59,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -94,9 +99,19 @@ public class DcNetworkAgent extends NetworkAgent {
 
     private final LocalLog mNetCapsLocalLog = new LocalLog(50);
 
-    // For interface duplicate detection. Key is the net id, value is the interface name in string.
-    private static Map<Integer, String> sInterfaceNames = new ArrayMap<>();
+    private PhoneSwitcher mPhoneSwitcher;
+    private final Handler mInternalHandler;
+    private int mScore;
 
+    // For interface duplicate detection. Key is the net id, value is the interface name in string.
+    private static Map<Integer, String> sInterfaceNames = new ConcurrentHashMap<>();
+
+    private final long NETWORK_LINGER_TIME_NON_DDS = 2000;      // In milliseconds
+    private final int TEARDOWN_DELAY_TIMEOUT_NON_DDS = 3000;    // In milliseconds
+    private final long NETWORK_LINGER_TIME_DDS = 30000;         // In milliseconds
+    private final int TEARDOWN_DELAY_TIMEOUT_DDS = 0;           // In milliseconds
+
+    private static final int EVENT_ACTIVE_PHONE_SWITCH = 1;
     private static final long NETWORK_UNWANTED_ANOMALY_WINDOW_MS = TimeUnit.MINUTES.toMillis(5);
     private static final int NETWORK_UNWANTED_ANOMALY_NUM_OCCURRENCES =  12;
 
@@ -109,6 +124,7 @@ public class DcNetworkAgent extends NetworkAgent {
         mId = getNetwork().getNetId();
         mTag = "DcNetworkAgent" + "-" + mId;
         mPhone = phone;
+        mScore = score;
         mNetworkCapabilities = dc.getNetworkCapabilities();
         mTransportType = transportType;
         mDataConnection = dc;
@@ -119,7 +135,51 @@ public class DcNetworkAgent extends NetworkAgent {
         } else {
             loge("The connection does not have a valid link properties.");
         }
+        mPhoneSwitcher = PhoneSwitcher.getInstance();
+        mInternalHandler = new InternalHandler(dc.getHandler().getLooper());
+        mPhoneSwitcher.registerForActivePhoneSwitch(mInternalHandler, EVENT_ACTIVE_PHONE_SWITCH,
+                null);
         mQosCallbackTracker = new QosCallbackTracker(this);
+    }
+
+    private class InternalHandler extends Handler {
+        public InternalHandler(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case EVENT_ACTIVE_PHONE_SWITCH:
+                    if (mNetworkCapabilities.hasCapability(
+                                NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        onActivePhoneSwitch();
+                    }
+                    break;
+                default:
+                    loge("Unknown message = " + msg.what);
+            }
+        }
+    }
+
+    private void onActivePhoneSwitch() {
+        long lingerTimer;
+        int timeoutDelay;
+        boolean isPrimary = false;
+        if (mPhone.getSubId() == SubscriptionController.getInstance()
+                .getActiveDataSubscriptionId()) {
+            lingerTimer = NETWORK_LINGER_TIME_DDS;
+            timeoutDelay = TEARDOWN_DELAY_TIMEOUT_DDS;
+            isPrimary = true;
+        } else {
+            lingerTimer = NETWORK_LINGER_TIME_NON_DDS;
+            timeoutDelay = TEARDOWN_DELAY_TIMEOUT_NON_DDS;
+        }
+        logd("onActivePhoneSwitch: setTransportPrimary=" + isPrimary);
+        setLingerDuration(Duration.ofMillis(lingerTimer));
+        setTeardownDelayMillis(timeoutDelay);
+        sendNetworkScore(new NetworkScore.Builder().setLegacyInt(mScore)
+                .setTransportPrimary(isPrimary).build());
     }
 
     private @NetworkType int getNetworkType() {
@@ -202,13 +262,21 @@ public class DcNetworkAgent extends NetworkAgent {
     @Override
     public synchronized void onNetworkUnwanted() {
         trackNetworkUnwanted();
+    }
+
+    @Override
+    public synchronized void onNetworkDestroyed() {
         if (mDataConnection == null) {
-            loge("onNetworkUnwanted found called on no-owner DcNetworkAgent!");
+            loge("onNetworkDestroyed found called on no-owner DcNetworkAgent!");
             return;
         }
 
-        logd("onNetworkUnwanted called. Now tear down the data connection "
+        logd("onNetworkDestroyed called. Now tear down the data connection "
                 + mDataConnection.getName());
+
+        // Unregister the broadcast receiver
+        mPhoneSwitcher.unregisterForActivePhoneSwitch(mInternalHandler);
+
         mDataConnection.tearDownAll(Phone.REASON_RELEASED_BY_CONNECTIVITY_SERVICE,
                 DcTracker.RELEASE_TYPE_DETACH, null);
     }

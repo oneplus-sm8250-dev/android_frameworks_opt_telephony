@@ -2711,4 +2711,11 @@ public interface CommandsInterface {
      * @param h Handler to be removed from the registrant list.
      */
      public void unregisterForSimPhonebookRecordsReceived(Handler h);
+
+    /**
+     *  Get phone radio capability
+     *
+     *  @param result Callback message.
+     */
+    public void getEnhancedRadioCapability(Message result);
 }

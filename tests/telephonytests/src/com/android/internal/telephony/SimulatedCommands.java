@@ -178,6 +178,7 @@ public class SimulatedCommands extends BaseCommands
     private boolean mDcSuccess = true;
     private SetupDataCallResult mSetupDataCallResult;
     private boolean mIsRadioPowerFailResponse = false;
+    private String smscAddress;
 
     public boolean mSetRadioPowerForEmergencyCall;
     public boolean mSetRadioPowerAsSelectedPhoneForEmergencyCall;
@@ -1103,6 +1104,7 @@ public class SimulatedCommands extends BaseCommands
      */
     @Override
     public void startDtmf(char c, Message result) {
+        SimulatedCommandsVerifier.getInstance().startDtmf(c, result);
         resultSuccess(result, null);
     }
 
@@ -1277,13 +1279,15 @@ public class SimulatedCommands extends BaseCommands
     public void getSmscAddress(Message result) {
         SimulatedCommandsVerifier.getInstance().getSmscAddress(result);
         if (mSendGetSmscAddressResponse) {
-            unimplemented(result);
+            resultSuccess(result, smscAddress);
         }
     }
 
     @Override
     public void setSmscAddress(String address, Message result) {
-        unimplemented(result);
+        smscAddress = address;
+        resultSuccess(result, null);
+        SimulatedCommandsVerifier.getInstance().setSmscAddress(address, result);
     }
 
     @Override
@@ -2474,7 +2478,7 @@ public class SimulatedCommands extends BaseCommands
 
     @Override
     public void updateSimPhonebookRecord(SimPhonebookRecord phonebookRecord, Message result) {
-        resultSuccess(result, new int[]{phonebookRecord.getRecordIndex()});
+        resultSuccess(result, new int[]{phonebookRecord.getRecordId()});
         notifySimPhonebookChanged();
     }
 

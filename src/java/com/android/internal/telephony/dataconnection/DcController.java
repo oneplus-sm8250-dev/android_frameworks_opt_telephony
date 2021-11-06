@@ -217,7 +217,8 @@ public class DcController extends Handler {
         // dcsList to the list of DC's to retry
         ArrayList<DataConnection> dcsToRetry = new ArrayList<DataConnection>();
         for (DataConnection dc : dcListActiveByCid.values()) {
-            if (dataCallResponseListByCid.get(dc.mCid) == null) {
+            if (dataCallResponseListByCid.get(dc.mCid) == null
+                && !dc.isBeingTransferred()) {
                 if (DBG) log("onDataStateChanged: add to retry dc=" + dc);
                 dcsToRetry.add(dc);
             }
