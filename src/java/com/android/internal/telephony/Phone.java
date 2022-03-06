@@ -5213,10 +5213,9 @@ public abstract class Phone extends Handler implements PhoneInternalInterface {
         return false;
     }
 
-    public void handleTimerInScbm(int action) {
-    }
-
     public boolean isScbmTimerCanceledForEmergency() {
         return false;
     }
+
+    public void onCarrierConfigLoadedForEssentialRecords() {}
 }
