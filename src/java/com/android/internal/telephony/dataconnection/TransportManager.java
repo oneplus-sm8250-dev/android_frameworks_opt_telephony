@@ -19,11 +19,13 @@ package com.android.internal.telephony.dataconnection;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.StringDef;
+import android.content.SharedPreferences;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
 import android.os.RegistrantList;
 import android.os.SystemProperties;
+import android.preference.PreferenceManager;
 import android.telephony.AccessNetworkConstants;
 import android.telephony.AccessNetworkConstants.AccessNetworkType;
 import android.telephony.AccessNetworkConstants.TransportType;
@@ -99,6 +101,8 @@ public class TransportManager extends Handler {
     // Delay the re-evaluation if transport fall back. QNS will need to quickly change the
     // preference back to the original transport to avoid another handover request.
     private static final long FALL_BACK_REEVALUATE_DELAY_MILLIS = TimeUnit.SECONDS.toMillis(3);
+
+    private static final String APN_TRANSPORT = "apn_transport-%d-%d";
 
     public static final String SYSTEM_PROPERTIES_IWLAN_OPERATION_MODE =
             "ro.telephony.iwlan_operation_mode";
@@ -253,6 +257,13 @@ public class TransportManager extends Handler {
             logl("setCurrentTransport: apnType=" + ApnSetting.getApnTypeString(apnType)
                     + ", transport=" + AccessNetworkConstants.transportTypeToString(transport));
         }
+        final SharedPreferences sp
+                = PreferenceManager.getDefaultSharedPreferences(mPhone.getContext());
+        final SharedPreferences.Editor editor = sp.edit();
+        final String key = String.format(APN_TRANSPORT, apnType, mPhone.getPhoneId());
+        editor.putInt(key, transport);
+        boolean result = editor.commit();
+        logl("setCurrentTransport: key=" + key + ", result=" + result);
     }
 
     private boolean isHandoverPending() {
@@ -357,8 +368,17 @@ public class TransportManager extends Handler {
         }
 
         // If we can't find the corresponding transport, always route to cellular.
-        return mCurrentTransports.get(apnType) == null
-                ? AccessNetworkConstants.TRANSPORT_TYPE_WWAN : mCurrentTransports.get(apnType);
+        if (!mCurrentTransports.containsKey(apnType)) {
+            final SharedPreferences sp
+                    = PreferenceManager.getDefaultSharedPreferences(mPhone.getContext());
+            final String key = String.format(APN_TRANSPORT, apnType, mPhone.getPhoneId());
+            final int transport = sp.getInt(key, AccessNetworkConstants.TRANSPORT_TYPE_WWAN);
+            mCurrentTransports.put(apnType, transport);
+            logl("getCurrentTransport: apnType=" + ApnSetting.getApnTypeString(apnType)
+                    + ", transport=" + AccessNetworkConstants.transportTypeToString(transport));
+            return transport;
+        }
+        return mCurrentTransports.get(apnType);
     }
 
     /**

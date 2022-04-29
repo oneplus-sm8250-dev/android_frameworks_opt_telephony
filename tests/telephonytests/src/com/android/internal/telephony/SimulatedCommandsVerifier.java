@@ -1525,4 +1525,8 @@ public class SimulatedCommandsVerifier implements CommandsInterface {
     @Override
     public void unregisterForSimPhonebookRecordsReceived(Handler h){
     }
+
+    @Override
+    public void getEnhancedRadioCapability(Message result) {
+    }
 }

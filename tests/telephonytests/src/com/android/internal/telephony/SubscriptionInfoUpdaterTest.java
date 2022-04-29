@@ -107,6 +107,10 @@ public class SubscriptionInfoUpdaterTest extends TelephonyTest {
     private IntentBroadcaster mIntentBroadcaster;
     @Mock
     private IPackageManager mPackageManager;
+
+    @Mock
+    GsmCdmaPhone mSecondPhone;
+
     @Mock
     private UiccSlot mUiccSlot;
 
@@ -368,6 +372,7 @@ public class SubscriptionInfoUpdaterTest extends TelephonyTest {
         doReturn(Arrays.asList(mSubInfo)).when(mSubscriptionController)
                 .getSubInfoUsingSlotIndexPrivileged(eq(FAKE_SUB_ID_1));
         doReturn(FAKE_ICCID_1).when(mIccRecord).getFullIccId();
+        doReturn(FAKE_MCC_MNC_1).when(mPhone).getOperatorNumeric();
         doReturn(FAKE_MCC_MNC_1).when(mTelephonyManager).getSimOperatorNumeric(FAKE_SUB_ID_1);
         when(mActivityManager.updateMccMncConfiguration(anyString(), anyString())).thenReturn(
                 true);
@@ -445,6 +450,7 @@ public class SubscriptionInfoUpdaterTest extends TelephonyTest {
     public void testSimLoadedEmptyOperatorNumeric() throws Exception {
         doReturn(FAKE_ICCID_1).when(mIccRecord).getFullIccId();
         // operator numeric is empty
+        doReturn("").when(mPhone).getOperatorNumeric();
         doReturn("").when(mTelephonyManager).getSimOperatorNumeric(FAKE_SUB_ID_1);
         doReturn(FAKE_SUB_ID_1).when(mSubInfo).getSubscriptionId();
         doReturn(Arrays.asList(mSubInfo)).when(mSubscriptionController)
@@ -497,7 +503,10 @@ public class SubscriptionInfoUpdaterTest extends TelephonyTest {
     @SmallTest
     public void testDualSimLoaded() throws Exception {
         // Mock there is two sim cards
-        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[]{mPhone, mPhone});
+        doReturn(mUiccProfile).when(mSecondPhone).getIccCard();
+        doReturn(mContext).when(mSecondPhone).getContext();
+
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[]{mPhone, mSecondPhone});
         replaceInstance(SubscriptionInfoUpdater.class, "sIccId", null,
                 new String[]{null, null});
         replaceInstance(SubscriptionInfoUpdater.class, "SUPPORTED_MODEM_COUNT", null, 2);
@@ -512,6 +521,11 @@ public class SubscriptionInfoUpdaterTest extends TelephonyTest {
         doReturn(FAKE_SUB_ID_2).when(mSubscriptionController).getPhoneId(eq(FAKE_SUB_ID_2));
         doReturn(2).when(mTelephonyManager).getPhoneCount();
         doReturn(2).when(mTelephonyManager).getActiveModemCount();
+        doReturn(FAKE_MCC_MNC_1).when(mPhone).getOperatorNumeric();
+        doReturn(FAKE_MCC_MNC_2).when(mSecondPhone).getOperatorNumeric();
+        // Mock there is no sim inserted before
+        doReturn(null).when(mSubscriptionController)
+                .getSubInfoUsingSlotIndexPrivileged(anyInt());
         when(mActivityManager.updateMccMncConfiguration(anyString(), anyString())).thenReturn(
                 true);
         doReturn(FAKE_MCC_MNC_1).when(mTelephonyManager).getSimOperatorNumeric(eq(FAKE_SUB_ID_1));
