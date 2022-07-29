@@ -74,6 +74,7 @@ public interface CommandsInterface {
     static final int CF_REASON_NOT_REACHABLE    = 3;
     static final int CF_REASON_ALL              = 4;
     static final int CF_REASON_ALL_CONDITIONAL  = 5;
+    static final int CF_REASON_NOT_LOGGED_IN    = 6;
 
     // Used for call barring methods below
     static final String CB_FACILITY_BAOC         = "AO";
@@ -2731,4 +2732,11 @@ public interface CommandsInterface {
      * @param h Handler to be removed from the registrant list.
      */
      public void unregisterForSimPhonebookRecordsReceived(Handler h);
+
+    /**
+     *  Get phone radio capability
+     *
+     *  @param result Callback message.
+     */
+    public void getEnhancedRadioCapability(Message result);
 }

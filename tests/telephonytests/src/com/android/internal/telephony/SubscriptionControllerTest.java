@@ -61,6 +61,7 @@ import androidx.test.filters.FlakyTest;
 import androidx.test.filters.SmallTest;
 
 import com.android.internal.telephony.uicc.IccCardStatus;
+import com.android.internal.telephony.uicc.UiccCard;
 import com.android.internal.telephony.uicc.UiccController;
 import com.android.internal.telephony.uicc.UiccSlot;
 
@@ -87,7 +88,13 @@ public class SubscriptionControllerTest extends TelephonyTest {
     private MockContentResolver mMockContentResolver;
     private FakeTelephonyProvider mFakeTelephonyProvider;
     @Mock
+    GsmCdmaPhone mSecondPhone;
+    @Mock
+    private UiccCard mUiccCard;
+    @Mock
     private UiccSlot mUiccSlot;
+    @Mock
+    private SubscriptionInfo mSubInfo;
     @Mock
     private ITelephonyRegistry.Stub mTelephonyRegisteryMock;
     @Mock
@@ -173,6 +180,8 @@ public class SubscriptionControllerTest extends TelephonyTest {
         //verify there is no sim inserted in the SubscriptionManager
         assertEquals(0, mSubscriptionControllerUT.getAllSubInfoCount(mCallingPackage,
                 mCallingFeature));
+
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
 
         int slotID = 0;
         //insert one Subscription Info
@@ -592,49 +601,51 @@ public class SubscriptionControllerTest extends TelephonyTest {
         int[] subIds = mSubscriptionControllerUT.getActiveSubIdList(/*visibleOnly*/false);
         assertTrue(subIds != null && subIds.length != 0);
         int subID = subIds[0];
+        doReturn(subID).when(mSubInfo).getSubscriptionId();
+        doReturn(Arrays.asList(mSubInfo)).when(mSubscriptionManager).getAllSubscriptionInfoList();
 
         // Set default void subId.
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.MULTI_SIM_VOICE_CALL_SUBSCRIPTION,
+                Settings.Global.MULTI_SIM_VOICE_CALL_SUBSCRIPTION + subID,
                 subID);
 
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.ENHANCED_4G_MODE_ENABLED,
+                Settings.Global.ENHANCED_4G_MODE_ENABLED + subID,
                 1);
 
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.VT_IMS_ENABLED,
+                Settings.Global.VT_IMS_ENABLED + subID,
                 0);
 
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_ENABLED,
+                Settings.Global.WFC_IMS_ENABLED + subID,
                 1);
 
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_MODE,
+                Settings.Global.WFC_IMS_MODE + subID,
                 2);
 
         Settings.Global.putInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_ROAMING_MODE,
+                Settings.Global.WFC_IMS_ROAMING_MODE + subID,
                 3);
 
         mSubscriptionControllerUT.migrateImsSettings();
 
         // Global settings should be all set.
         assertEquals(-1,  Settings.Global.getInt(mContext.getContentResolver(),
-                Settings.Global.ENHANCED_4G_MODE_ENABLED));
+                Settings.Global.ENHANCED_4G_MODE_ENABLED + subID));
 
         assertEquals(-1,  Settings.Global.getInt(mContext.getContentResolver(),
-                Settings.Global.VT_IMS_ENABLED));
+                Settings.Global.VT_IMS_ENABLED + subID));
 
         assertEquals(-1,  Settings.Global.getInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_ENABLED));
+                Settings.Global.WFC_IMS_ENABLED + subID));
 
         assertEquals(-1,  Settings.Global.getInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_MODE));
+                Settings.Global.WFC_IMS_MODE + subID));
 
         assertEquals(-1,  Settings.Global.getInt(mContext.getContentResolver(),
-                Settings.Global.WFC_IMS_ROAMING_MODE));
+                Settings.Global.WFC_IMS_ROAMING_MODE + subID));
 
         // The values should be migrated to its DB.
         assertEquals("1", mSubscriptionControllerUT.getSubscriptionProperty(
@@ -934,6 +945,7 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @SmallTest
     public void testSetSubscriptionGroupWithModifyPermission() throws Exception {
         testInsertSim();
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("test2", 0);
         mContextFixture.removeCallingOrSelfPermission(ContextFixture.PERMISSION_ENABLE_ALL);
         mContextFixture.addCallingOrSelfPermission(Manifest.permission.READ_PHONE_STATE);
@@ -966,6 +978,11 @@ public class SubscriptionControllerTest extends TelephonyTest {
         testInsertSim();
         // Adding a second profile and mark as embedded.
         // TODO b/123300875 slot index 1 is not expected to be valid
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        // TODO Need to clean up on Android S
+        doReturn(mVoiceCallSessionStats).when(mSecondPhone).getVoiceCallSessionStats();
+
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("test2", 1);
         ContentValues values = new ContentValues();
         values.put(SubscriptionManager.IS_EMBEDDED, 1);
@@ -1027,6 +1044,11 @@ public class SubscriptionControllerTest extends TelephonyTest {
         testInsertSim();
         // Adding a second profile and mark as embedded.
         // TODO b/123300875 slot index 1 is not expected to be valid
+        // TODO Need to clean up on Android S
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        doReturn(mVoiceCallSessionStats).when(mSecondPhone).getVoiceCallSessionStats();
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
+
         mSubscriptionControllerUT.addSubInfoRecord("test2", 1);
         ContentValues values = new ContentValues();
         values.put(SubscriptionManager.IS_EMBEDDED, 1);
@@ -1076,6 +1098,10 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @SmallTest
     public void testUpdateSubscriptionGroupWithCarrierPrivilegePermission() throws Exception {
         testInsertSim();
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        // TODO Need to clean up on Android S
+        doReturn(mVoiceCallSessionStats).when(mSecondPhone).getVoiceCallSessionStats();
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
         // Adding a second profile and mark as embedded.
         // TODO b/123300875 slot index 1 is not expected to be valid
         mSubscriptionControllerUT.addSubInfoRecord("test2", 1);
@@ -1197,6 +1223,10 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @SmallTest
     public void testSetSubscriptionGroup() throws Exception {
         testInsertSim();
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        // TODO Need to clean up on Android S
+        doReturn(mVoiceCallSessionStats).when(mSecondPhone).getVoiceCallSessionStats();
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
         // Adding a second profile and mark as embedded.
         mSubscriptionControllerUT.addSubInfoRecord("test2", 1);
         ContentValues values = new ContentValues();
@@ -1284,8 +1314,11 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @Test
     @SmallTest
     public void testGetActiveSubIdList() throws Exception {
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
         // TODO b/123300875 slot index 1 is not expected to be valid
         mSubscriptionControllerUT.addSubInfoRecord("123", 1);   // sub 1
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("456", 0);   // sub 2
 
         int[] subIds = mSubscriptionControllerUT.getActiveSubIdList(/*visibleOnly*/false);
@@ -1543,6 +1576,10 @@ public class SubscriptionControllerTest extends TelephonyTest {
         // the ICC ID and phone number.
         testInsertSim();
         doReturn(2).when(mTelephonyManager).getPhoneCount();
+        // TODO Need to clean up on Android S
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
+        doReturn(mVoiceCallSessionStats).when(mSecondPhone).getVoiceCallSessionStats();
         mSubscriptionControllerUT.addSubInfoRecord("test2", 1);
         int firstSubId = getFirstSubId();
         int secondSubId = getSubIdAtIndex(1);
@@ -1832,6 +1869,10 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @SmallTest
     public void testGetAvailableSubscriptionList() throws Exception {
         // TODO b/123300875 slot index 1 is not expected to be valid
+        // Need to clean up on Android S
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("123", 1);   // sub 1
         mSubscriptionControllerUT.addSubInfoRecord("456", 0);   // sub 2
 
@@ -1867,7 +1908,11 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @SmallTest
     public void testGetAvailableSubscriptionList_withTrailingF() throws Exception {
         // TODO b/123300875 slot index 1 is not expected to be valid
+        // TODO Need to clean up on Android S
+        replaceInstance(PhoneFactory.class, "sPhones", null, new Phone[] {mPhone, mSecondPhone});
+        when(UiccController.getInstance().getUiccCardForPhone(1)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("123", 1);   // sub 1
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord("456", 0);   // sub 2
 
         // Remove "123" from active sim list but have it inserted.
@@ -1914,6 +1959,8 @@ public class SubscriptionControllerTest extends TelephonyTest {
     @Test
     public void testSetSubscriptionEnabled_disableActivePsim_cardIdWithTrailingF() {
         String iccId = "123F";
+        // TODO Need to clean up on Android S
+        when(UiccController.getInstance().getUiccCardForPhone(0)).thenReturn(mUiccCard);
         mSubscriptionControllerUT.addSubInfoRecord(iccId, 0);
         mSubscriptionControllerUT.registerForUiccAppsEnabled(mHandler, 0, null, false);
         UiccSlotInfo slot = getFakeUiccSlotInfo(true, 0, iccId + "FF");
